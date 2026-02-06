@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>光電效應模擬 - 陳佑寧</title>
+    <style>
+        /* --- 莫蘭迪色系變數定義 --- */
+        :root {
+            --morandi-bg-main: #F0F2F0;       
+            --morandi-bg-sidebar: #FFFFFF;    
+            --morandi-border: #D1D5DB;        
+            --morandi-primary: #6B7C85;       
+            --morandi-accent: #8E9BA3;        
+            --morandi-success: #8DAA91;       
+            --morandi-error: #C08E89;         
+            --morandi-text: #4A4A4A;          
+            --slider-track: #E0E0E0;
+        }
+
+        body {
+            font-family: 'Segoe UI', 'Microsoft JhengHei', sans-serif;
+            font-size: 16px; 
+            margin: 0;
+            padding: 0;
+            color: var(--morandi-text);
+            background-color: var(--morandi-bg-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow-x: hidden; /* 防止水平抖動 */
+        }
+
+        /* --- 主容器 Grid 設定 --- */
+        .container {
+            display: grid;
+            grid-template-rows: 50px 1fr; 
+            grid-template-columns: 1fr 350px; /* 電腦版：左畫面右面板 */
+            height: 100vh;
+            width: 100vw;
+        }
+
+        /* 📱 手機版 RWD 調整 */
+        @media (max-width: 850px) {
+            .container {
+                grid-template-columns: 1fr; /* 變成單一欄位 */
+                grid-template-rows: 50px 400px auto; /* 標題、模擬畫面(固定高)、控制面板(自動高) */
+                height: auto; /* 允許垂直延伸 */
+                overflow-y: auto;
+            }
+            body {
+                overflow-y: auto; /* 手機版允許捲動 */
+            }
+        }
+
+        /* 1. Header */
+        .header {
+            grid-column: 1 / -1;
+            background-color: var(--morandi-primary);
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            z-index: 10;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 1.2rem;
+            font-weight: 500;
+            letter-spacing: 2px;
+        }
+        
+        .signature {
+            font-size: 0.8rem;
+            margin-left: 10px;
+            font-weight: normal;
+            opacity: 0.9;
+        }
+
+        /* 2. Simulation Area */
+        .simulation-area {
+            background-color: var(--morandi-bg-main);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 10px;
+            overflow: hidden;
+        }
+
+        /* 3. Sidebar */
+        .sidebar {
+            background-color: var(--morandi-bg-sidebar);
+            border-left: 1px solid var(--morandi-border);
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            box-sizing: border-box;
+            overflow-y: auto;
+        }
+
+        @media (max-width: 850px) {
+            .sidebar {
+                border-left: none;
+                border-top: 1px solid var(--morandi-border);
+                padding-bottom: 40px; /* 底部留白方便捲動 */
+            }
+        }
+
+        .panel-section { padding-bottom: 5px; }
+
+        h2 {
+            font-size: 1.1rem;
+            color: var(--morandi-primary);
+            margin: 0 0 12px 0;
+            padding-left: 8px;
+            border-left: 4px solid var(--morandi-accent);
+        }
+
+        .control-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 6px; font-weight: 700; font-size: 0.9rem; }
+
+        input[type="range"] {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 8px;
+            outline: none;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+
+        #freqSlider {
+            background: linear-gradient(to right, #ff0000 0%, #ffff00 25%, #00ff00 50%, #00ffff 75%, #2200ff 100%);
+        }
+        #intensitySlider { background: var(--slider-track); }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 20px;
+            width: 20px;
+            background: var(--morandi-primary);
+            border: 2px solid #fff;
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+        }
+
+        .metal-options { display: flex; flex-direction: column; gap: 6px; }
+        .slider {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 12px;
+            border-radius: 6px;
+            background: #F8F8F8; 
+            color: #777;
+            font-size: 0.85rem;
+            border: 1px solid #eee;
+        }
+        
+        .metal-option input { display: none; }
+        .metal-option input:checked + .slider {
+            background-color: var(--morandi-primary);
+            color: #fff;
+        }
+
+        table.result-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+            background: #fff;
+        }
+        table.result-table th { background: #E8EBEB; color: var(--morandi-primary); padding: 10px; text-align: left; width: 45%; }
+        table.result-table td { padding: 10px; text-align: center; border: 1px solid #eee; }
+        
+        .result-val { font-weight: bold; font-size: 1rem; }
+
+        .canvas-container {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            padding: 5px;
+            box-sizing: border-box;
+            position: relative;
+        }
+
+        canvas {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+        
+        .val-display { float: right; color: var(--morandi-primary); font-family: monospace; font-weight: bold;}
+
+        .copyright-tag {
+            margin-top: 5px;
+            font-size: 0.6rem;
+            color: #B0B0B0;
+            letter-spacing: 1px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    
+    <header class="header">
+        <h1>光電效應模擬 <span class="signature">陳佑寧</span></h1>
+    </header>
+
+    <main class="simulation-area">
+        <div class="canvas-container">
+            <canvas id="simCanvas" width="1000" height="700"></canvas>
+            <div class="copyright-tag">
+                &copy; 2026 陳佑寧 版權所有 | ALL RIGHTS RESERVED
+            </div>
+        </div>
+    </main>
+
+    <aside class="sidebar">
+        <div class="panel-section">
+            <h2>參數設定</h2>
+            
+            <div class="control-group">
+                <label>光頻率 f <span id="freqVal" class="val-display"></span></label>
+                <input type="range" id="freqSlider" min="1" max="12" step="0.1" value="6">
+            </div>
+
+            <div class="control-group">
+                <label>金屬材料 (截止頻率 f₀)</label>
+                <div class="metal-options">
+                    <label class="metal-option">
+                        <input type="radio" name="metal" value="5.5" checked>
+                        <div class="slider"><span class="metal-name">銫 (Cs)</span><span class="metal-val">5.5×10¹⁴</span></div>
+                    </label>
+                    <label class="metal-option">
+                        <input type="radio" name="metal" value="10.0">
+                        <div class="slider"><span class="metal-name">銀 (Ag)</span><span class="metal-val">1.0×10¹⁵</span></div>
+                    </label>
+                    <label class="metal-option">
+                        <input type="radio" name="metal" value="11.0">
+                        <div class="slider"><span class="metal-name">銅 (Cu)</span><span class="metal-val">1.1×10¹⁵</span></div>
+                    </label>
+                </div>
+            </div>
+
+            <div class="control-group">
+                <label>光強度</label>
+                <input type="range" id="intensitySlider" min="0" max="30" value="10">
+            </div>
+        </div>
+
+        <div class="panel-section">
+            <h2>計算結果</h2>
+            <table class="result-table">
+                <tr><th>光子能量 E</th><td><span id="td_E" class="result-val">--</span></td></tr>
+                <tr><th>實驗狀態</th><td><span id="td_status" class="result-val">--</span></td></tr>
+                <tr><th>最大動能 K</th><td><span id="td_K" class="result-val">--</span></td></tr>
+            </table>
+        </div>
+    </aside>
+</div>
+
+<script>
+    const h = 6.63; 
+    const freqSlider = document.getElementById('freqSlider');
+    const metalRadios = document.getElementsByName('metal'); 
+    const intensitySlider = document.getElementById('intensitySlider');
+    const freqValDisplay = document.getElementById('freqVal');
+    const td_E = document.getElementById('td_E');
+    const td_status = document.getElementById('td_status');
+    const td_K = document.getElementById('td_K');
+    const canvas = document.getElementById('simCanvas');
+    const ctx = canvas.getContext('2d');
+
+    let state = { f: 6.0, f0: 5.5, intensity: 10, isEmitting: false };
+    let electrons = [];
+    let time = 0;
+
+    const CENTER_X = 500, CENTER_Y = 350, TUBE_R = 200, PLATE_R = 120;
+    const PLATE_CX = CENTER_X - 80, PLATE_CY = CENTER_Y, ANODE_X = CENTER_X + 110, ANODE_Y = CENTER_Y;
+    const SOURCE_X = CENTER_X + 140, SOURCE_Y = CENTER_Y - 200;
+
+    function init() {
+        updateCalculations();
+        requestAnimationFrame(animate);
+    }
+
+    freqSlider.addEventListener('input', updateCalculations);
+    intensitySlider.addEventListener('input', () => { state.intensity = parseInt(intensitySlider.value); });
+    metalRadios.forEach(radio => radio.addEventListener('change', updateCalculations));
+
+    function toSci(base, power) { return `${base.toFixed(2)}×10<sup>${power}</sup>`; }
+
+    function updateCalculations() {
+        state.f = parseFloat(freqSlider.value);
+        for(let radio of metalRadios) { if(radio.checked) { state.f0 = parseFloat(radio.value); break; } }
+        freqValDisplay.innerHTML = `${state.f.toFixed(1)}×10<sup>14</sup>`;
+        let E_val = h * state.f; 
+        td_E.innerHTML = `${toSci(E_val/10, -19)} J`;
+        state.isEmitting = state.f > state.f0;
+        td_status.innerHTML = state.isEmitting ? `<span style="color:var(--morandi-success)">發生效應</span>` : `<span style="color:var(--morandi-error)">未發生</span>`;
+        if (!state.isEmitting) {
+            td_K.innerHTML = `<span style="color:#aaa">0 J</span>`;
+        } else {
+            let K_val = h * (state.f - state.f0);
+            td_K.innerHTML = `${toSci(K_val/10, -19)} J`;
+        }
+    }
+
+    class Electron {
+        constructor(startX, startY, speed) {
+            this.x = startX; this.y = startY;
+            let targetY = ANODE_Y + (Math.random() - 0.5) * 60; 
+            let dx = ANODE_X - startX, dy = targetY - startY;
+            let angle = Math.atan2(dy, dx);
+            this.vx = speed * Math.cos(angle); this.vy = speed * Math.sin(angle);
+            this.radius = 5;
+        }
+        update() { this.x += this.vx; this.y += this.vy; }
+        draw() { ctx.beginPath(); ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2); ctx.fillStyle = '#5F9EA0'; ctx.fill(); }
+    }
+
+    function drawSineWave(x1, y1, x2, y2, freq, t) {
+        ctx.beginPath();
+        let dist = Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
+        let angle = Math.atan2(y2 - y1, x2 - x1);
+        let wavelength = 180 / (freq + 2); 
+        let amplitude = 5; 
+        ctx.save();
+        ctx.translate(x1, y1); ctx.rotate(angle);
+        let hue = ((freq - 1) / 11) * 280; 
+        ctx.strokeStyle = `hsla(${hue}, 85%, 50%, 0.8)`; ctx.lineWidth = 4;
+        for (let x = 0; x <= dist; x += 3) {
+            let y = amplitude * Math.sin((x / wavelength) * Math.PI * 2 - t * freq * 0.8);
+            if (x === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        }
+        ctx.stroke(); ctx.restore();
+    }
+
+    function drawBackground() {
+        ctx.beginPath(); ctx.arc(CENTER_X, CENTER_Y, TUBE_R, 0, Math.PI * 2);
+        ctx.strokeStyle = '#9AA5AA'; ctx.lineWidth = 5; ctx.stroke();
+        ctx.fillStyle = 'rgba(245, 245, 245, 0.4)'; ctx.fill();
+        ctx.beginPath(); ctx.arc(PLATE_CX, PLATE_CY, PLATE_R, Math.PI - 1.0, Math.PI + 1.0, false);
+        ctx.strokeStyle = '#6E7C7C'; ctx.lineWidth = 12; ctx.stroke();
+        ctx.fillRect(ANODE_X, CENTER_Y - 30, 8, 60); 
+        ctx.strokeStyle = '#C08E89'; ctx.lineWidth = 4;
+        ctx.beginPath(); ctx.moveTo(PLATE_CX - PLATE_R, CENTER_Y); ctx.lineTo(CENTER_X - 220, CENTER_Y);
+        ctx.lineTo(CENTER_X - 220, CENTER_Y + 240); ctx.lineTo(CENTER_X - 50, CENTER_Y + 240);
+        ctx.moveTo(ANODE_X + 5, CENTER_Y); ctx.lineTo(CENTER_X + 220, CENTER_Y);
+        ctx.lineTo(CENTER_X + 220, CENTER_Y + 240); ctx.lineTo(CENTER_X + 50, CENTER_Y + 240);
+        ctx.stroke();
+        ctx.beginPath(); ctx.arc(CENTER_X, CENTER_Y + 240, 40, 0, Math.PI*2);
+        ctx.fillStyle = '#fff'; ctx.fill(); ctx.strokeStyle = '#6E7C7C'; ctx.stroke();
+        ctx.fillStyle = '#4A4A4A'; ctx.font = 'bold 22px Arial'; ctx.fillText("A", CENTER_X - 8, CENTER_Y + 248);
+        let angle = -Math.PI / 2;
+        if (state.isEmitting && state.intensity > 0) angle += (state.intensity / 30) * (Math.PI / 3);
+        ctx.beginPath(); ctx.moveTo(CENTER_X, CENTER_Y + 245); ctx.lineTo(CENTER_X + 30 * Math.cos(angle), CENTER_Y + 240 + 30 * Math.sin(angle));
+        ctx.strokeStyle = '#C08E89'; ctx.stroke();
+        ctx.save(); ctx.translate(SOURCE_X, SOURCE_Y);
+        ctx.rotate(Math.atan2(CENTER_Y - SOURCE_Y, (PLATE_CX-40) - SOURCE_X));
+        ctx.fillStyle = '#6E7C7C'; ctx.fillRect(0, -16, 70, 32); ctx.restore();
+    }
+
+    function animate() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        time += 0.05;
+        drawBackground();
+        if (state.intensity > 0) {
+            let beams = Math.ceil(state.intensity / 6);
+            for (let i = 0; i < beams; i++) {
+                let hitAngle = Math.PI + (i - (beams-1)/2) * 0.15 + 0.2;
+                let tx = PLATE_CX + PLATE_R * Math.cos(hitAngle), ty = PLATE_CY + PLATE_R * Math.sin(hitAngle);
+                drawSineWave(SOURCE_X, SOURCE_Y, tx, ty, state.f, time);
+                if (state.isEmitting && Math.random() < 0.03) electrons.push(new Electron(tx, ty, Math.sqrt(state.f - state.f0) * 3));
+            }
+        }
+        for (let i = 0; i < electrons.length; i++) {
+            electrons[i].update(); electrons[i].draw();
+            if (electrons[i].x > ANODE_X || electrons[i].x > 1000) { electrons.splice(i, 1); i--; }
+        }
+        requestAnimationFrame(animate);
+    }
+    init();
+</script>
+</body>
+</html>
